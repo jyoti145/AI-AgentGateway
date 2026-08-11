@@ -13,6 +13,8 @@ const PORT = process.env.PORT || 5000;
 
 app.use(express.json());
 app.use('/agents', agentRoutes);
+app.use(rateLimiter);
+app.use(express.json());
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
