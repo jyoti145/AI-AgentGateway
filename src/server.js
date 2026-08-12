@@ -4,6 +4,7 @@ import express from 'express';
 import connectDB from './config/db.js';
 import agentRoutes from './routes/agent.routes.js';
 import authRoutes from './routes/auth.routes.js';
+import proxyRoutes from './routes/proxy.routes.js';
 
 await connectDB();
 
@@ -15,6 +16,7 @@ app.use(express.json());
 app.use('/agents', agentRoutes);
 app.use(rateLimiter);
 app.use(express.json());
+app.use('/api/proxy', proxyRoutes);
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
