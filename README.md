@@ -1,6 +1,6 @@
 # AgentGateway
 
-A lightweight API Gateway built for **AI agent workloads** — authenticating, rate-limiting, and routing requests from AI agents to downstream services through a single gateway layer.
+A lightweight API Gateway built for **AI agent workloads** — authenticating and rate-limiting requests from AI agents before they reach backend services.
 
 ## Why this exists
 
@@ -12,13 +12,12 @@ AgentGateway centralizes that into one pipeline every request passes through:
 Agent Request
    │
    ▼
-┌──────────────────────────────────────────┐
-│  Rate Limiter  →  JWT Auth  →  RBAC  →     │
-│  Proxy                                     │
-└──────────────────────────────────────────┘
+┌─────────────────────────────────┐
+│  Rate Limiter → JWT Auth → RBAC  │
+└─────────────────────────────────┘
    │
    ▼
-Downstream Service
+Protected Route (e.g. Agent Management)
 ```
 
 Each stage is an independent Express middleware with one job — any stage can reject a request early without the rest of the pipeline ever running.
@@ -26,28 +25,26 @@ Each stage is an independent Express middleware with one job — any stage can r
 ## Features
 
 **Implemented:**
-- ✅ Redis-backed **rate limiting** (50 req/min per IP) using an atomic `INCR` counter with TTL-based expiry, returning `429` once exceeded
-- ✅ **JWT authentication** with short-lived access tokens and long-lived, rotating refresh tokens
-- ✅ **Refresh token rotation with reuse detection** — a replayed/stolen refresh token triggers full session revocation
-- ✅ **Role-Based Access Control (RBAC)** — a reusable, parameterized middleware factory (`authorizeRoles(...roles)`) protecting admin-only routes
-- ✅ **Reverse proxy** — forwards authenticated requests to a downstream AI/LLM service and relays the response back
+- ✅ Redis-based **rate limiting** (50 requests/minute per IP) using an atomic counter with TTL-based expiry, returning HTTP 429 once the limit is exceeded
+- ✅ **JWT authentication** with short-lived access tokens and rotating refresh tokens (including reuse detection on replayed tokens), with a shared auth middleware used across all protected routes
+- ✅ **Role-Based Access Control (RBAC)** middleware restricting admin-only routes from regular agents
 - ✅ MongoDB-backed Agent identity store, with API keys and refresh tokens stored only as bcrypt hashes
 
 **Planned:**
 - 🔜 Logging rate-limited/flagged requests to an AWS S3 bucket
 - 🔜 React admin dashboard (login + agent list view)
-- 🔜 Automated tests
 
 ## Tech stack
 
 | Layer | Technology |
 |---|---|
+| Frontend | React.js *(planned)* |
 | Runtime | Node.js (ES Modules) |
 | Framework | Express |
 | Database | MongoDB (Mongoose) |
 | Rate limiting store | Redis (ioredis) |
 | Auth | JWT (jsonwebtoken), bcrypt |
-| Planned | AWS S3, React |
+| Planned | AWS S3 |
 
 ## Project structure
 
@@ -58,8 +55,7 @@ src/
 │   └── redis.js                 # Redis connection
 ├── controllers/
 │   ├── auth.controller.js       # login / refresh / logout logic
-│   ├── agent.controller.js      # admin-only agent management
-│   └── proxy.controller.js      # forwards requests to downstream AI service
+│   └── agent.controller.js      # admin-only agent management
 ├── middleware/
 │   ├── auth.middleware.js       # JWT access-token verification
 │   ├── rbac.middleware.js       # role-based route protection
@@ -68,8 +64,7 @@ src/
 │   └── Agent.model.js           # Agent schema (identity, role, rate tier)
 ├── routes/
 │   ├── auth.routes.js
-│   ├── agent.routes.js
-│   └── proxy.routes.js
+│   └── agent.routes.js
 ├── scripts/
 │   ├── seedAgent.js              # creates a test agent (role: agent)
 │   └── seedAdmin.js              # creates a test agent (role: admin)
@@ -105,9 +100,6 @@ JWT_ACCESS_SECRET=long_random_string
 JWT_REFRESH_SECRET=another_long_random_string
 ACCESS_TOKEN_EXPIRY=15m
 REFRESH_TOKEN_EXPIRY=7d
-DOWNSTREAM_AI_API_URL=your_llm_provider_endpoint
-DOWNSTREAM_AI_API_KEY=your_llm_provider_key
-DOWNSTREAM_AI_MODEL=your_model_name
 ```
 
 Generate strong secrets with:
@@ -154,12 +146,9 @@ Requires `Authorization: Bearer <accessToken>`. Invalidates the current refresh 
 ### `GET /agents`
 Requires an **admin**-role access token. Returns all agents (excluding hashed credentials).
 
-### `POST /api/proxy/chat`
-Requires a valid access token. Forwards `{ "message": "..." }` to the configured downstream AI service and returns `{ "reply": "..." }`.
-
 ## Rate limiting
 
-Every request is checked against a Redis-backed fixed-window counter (50 requests/minute per IP) before reaching any route, including `/auth/login` — protecting the gateway from brute-force attempts, not just downstream services. Requests over the limit receive `429 Too Many Requests`.
+Every request is checked against a Redis-backed fixed-window counter (50 requests/minute per IP) before reaching any route, including `/auth/login` — protecting the gateway from brute-force attempts. Requests over the limit receive `429 Too Many Requests`.
 
 ## Architecture decisions worth knowing
 
